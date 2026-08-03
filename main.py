@@ -39,6 +39,13 @@ _REPORTS = []
 _PROFILE_SETTINGS = {}
 _REWARDS = {}
 _MODERATION = {}
+_FOLLOWS = {}
+_BLOCKS = {}
+_GIFT_CATALOG = [
+    {"id": "gift-basic", "name": "Spark", "price": 25, "description": "A quick burst of celebration"},
+    {"id": "gift-premium", "name": "Nova", "price": 100, "description": "Premium flair for special moments"},
+]
+_MINIGAMES = {}
 
 
 def _utcnow():
@@ -147,6 +154,72 @@ async def get_current_user_profile():
     if not user:
         return _error("authentication required", 401)
     return _json_response({"user": user})
+
+
+@app.post("/api/v1/follows")
+async def create_follow():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    target_username = _normalize_username(payload.get("target_username"))
+    target_user = next((candidate for candidate in _USERS.values() if candidate["username"] == target_username), None)
+    if not target_user or target_user["id"] == user["id"]:
+        return _error("invalid target user", 400)
+
+    follow = {"id": f"follow-{len(_FOLLOWS.get(user['id'], [])) + 1}", "from_user_id": user["id"], "target_username": target_username}
+    _FOLLOWS.setdefault(user["id"], []).append(follow)
+    return _json_response({"follow": follow}, 201)
+
+
+@app.post("/api/v1/blocks")
+async def create_block():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    target_username = _normalize_username(payload.get("target_username"))
+    target_user = next((candidate for candidate in _USERS.values() if candidate["username"] == target_username), None)
+    if not target_user or target_user["id"] == user["id"]:
+        return _error("invalid target user", 400)
+
+    block = {"id": f"block-{len(_BLOCKS.get(user['id'], [])) + 1}", "from_user_id": user["id"], "target_username": target_username}
+    _BLOCKS.setdefault(user["id"], []).append(block)
+    return _json_response({"block": block}, 201)
+
+
+@app.get("/api/v1/wallet")
+async def get_wallet():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    wallet = _ECONOMY.setdefault(user["id"], {"balance": 1000, "ledger": []})
+    return _json_response({"wallet": wallet})
+
+
+@app.get("/api/v1/gifts/catalog")
+async def list_gift_catalog():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    return _json_response({"catalog": _GIFT_CATALOG})
+
+
+@app.post("/api/v1/minigames/quiz/score")
+async def update_minigame_score():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    score = int(payload.get("score", 0))
+    entry = {"user_id": user["id"], "username": user["username"], "score": score}
+    _MINIGAMES[user["id"]] = entry
+    return _json_response({"score": score, "entry": entry})
 
 
 @app.post("/api/v1/rooms")

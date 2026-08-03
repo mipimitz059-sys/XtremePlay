@@ -1,8 +1,8 @@
 openapi: 3.0.1
 info:
   title: XtremePlay API
-  description: Social gaming platform foundation with auth, rooms, and leaderboards.
-  version: 'v1'
+  description: Social gaming platform API with auth, profiles, friends, rooms, rewards, moderation and admin endpoints.
+  version: '1.0.0'
 servers:
   - url: http://localhost:5003
 paths:
@@ -15,18 +15,30 @@ paths:
   /api/v1/auth/register:
     post:
       summary: Register a new user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
       responses:
         '201':
           description: Created
+  /api/v1/auth/login:
+    post:
+      summary: Log in a user
+      responses:
+        '200':
+          description: OK
   /api/v1/me:
     get:
-      summary: Get current authenticated profile
+      summary: Get current profile
+      responses:
+        '200':
+          description: OK
+  /api/v1/profile/settings:
+    post:
+      summary: Update profile settings
+      responses:
+        '200':
+          description: OK
+  /api/v1/rewards/daily:
+    post:
+      summary: Claim daily reward
       responses:
         '200':
           description: OK
@@ -36,144 +48,28 @@ paths:
       responses:
         '200':
           description: OK
-    post:
-      summary: Create a room
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateRoomRequest'
+  /api/v1/rooms/{roomId}/messages:
+    get:
+      summary: List room messages
       responses:
-        '201':
-          description: Created
+        '200':
+          description: OK
+  /api/v1/voice-rooms:
+    get:
+      summary: List voice rooms
+      responses:
+        '200':
+          description: OK
   /api/v1/leaderboard:
     get:
-      summary: Get leaderboard entries
+      summary: List leaderboard entries
       responses:
         '200':
           description: OK
-  /api/v1/leaderboard/score:
-    post:
-      summary: Update a user's score
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ScoreRequest'
-      responses:
-        '200':
-          description: OK
-  /todos/{username}:
+  /api/v1/admin/reports:
     get:
-      operationId: getTodos
-      summary: Get the list of todos
-      parameters:
-      - in: path
-        name: username
-        schema:
-            type: string
-        required: true
-        description: The name of the user.
+      summary: List moderation reports
       responses:
         '200':
           description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/getTodosResponse'
-    post:
-      operationId: addTodo
-      summary: Add a todo to the list
-      parameters:
-      - in: path
-        name: username
-        schema:
-            type: string
-        required: true
-        description: The name of the user.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/addTodoRequest'
-      responses:
-        '200':
-          description: OK
-    delete:
-      operationId: deleteTodo
-      summary: Delete a todo from the list
-      parameters:
-      - in: path
-        name: username
-        schema:
-            type: string
-        required: true
-        description: The name of the user.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/deleteTodoRequest'
-      responses:
-        '200':
-          description: OK
-components:
-  schemas:
-    RegisterRequest:
-      type: object
-      required:
-      - username
-      - email
-      properties:
-        username:
-          type: string
-        display_name:
-          type: string
-        email:
-          type: string
-    CreateRoomRequest:
-      type: object
-      required:
-      - name
-      properties:
-        name:
-          type: string
-        theme:
-          type: string
-    ScoreRequest:
-      type: object
-      required:
-      - score
-      properties:
-        score:
-          type: integer
-    getTodosResponse:
-      type: object
-      properties:
-        todos:
-          type: array
-          items:
-            type: string
-          description: The list of todos.
-    addTodoRequest:
-      type: object
-      required:
-      - todo
-      properties:
-        todo:
-          type: string
-          description: The todo to add to the list.
-          required: true
-    deleteTodoRequest:
-      type: object
-      required:
-      - todo_idx
-      properties:
-        todo_idx:
-          type: integer
-          description: The index of the todo to delete.
-          required: true
+components: {}

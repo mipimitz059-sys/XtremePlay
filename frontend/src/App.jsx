@@ -5,6 +5,9 @@ import FriendsPanel from './FriendsPanel';
 import LeaderboardPanel from './LeaderboardPanel';
 import ProfilePanel from './ProfilePanel';
 import RoomsPanel from './RoomsPanel';
+import WalletPanel from './WalletPanel';
+import GiftPanel from './GiftPanel';
+import MiniGamePanel from './MiniGamePanel';
 
 const initialState = {
   user: null,
@@ -18,6 +21,12 @@ function App() {
   const [state, setState] = useState({ ...initialState, reports: [], profile: {}, rewards: [], notifications: [] });
   const [query, setQuery] = useState('');
   const [form, setForm] = useState({ username: '', display_name: '', email: '', password: '' });
+  const [profileForm, setProfileForm] = useState({ bio: '', location: '', theme: 'midnight' });
+  const [roomForm, setRoomForm] = useState({ name: '', theme: 'casual' });
+  const [voiceForm, setVoiceForm] = useState({ name: '', topic: 'general' });
+  const [messageText, setMessageText] = useState('');
+  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [messages, setMessages] = useState([]);
 
   useEffect(() => {
     if (!state.token) return;
@@ -49,6 +58,16 @@ function App() {
     fetch('/api/v1/rooms', { headers: { Authorization: `Bearer ${state.token}` } })
       .then((response) => response.json())
       .then((payload) => setState((current) => ({ ...current, rooms: payload.rooms || [] })))
+      .catch(() => {});
+
+    fetch('/api/v1/wallet', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, wallet: payload.wallet || { balance: 0, ledger: [] } })))
+      .catch(() => {});
+
+    fetch('/api/v1/gifts/catalog', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, catalog: payload.catalog || [] })))
       .catch(() => {});
   }, [state.token]);
 
@@ -89,6 +108,72 @@ function App() {
     if (response.ok) {
       const payload = await response.json();
       setState((current) => ({ ...current, notifications: [...current.notifications, payload] }));
+    }
+  };
+
+  const handleProfileSave = async (event) => {
+    event.preventDefault();
+    const response = await fetch('/api/v1/profile/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify(profileForm),
+    });
+    const payload = await response.json();
+    if (payload.profile) {
+      setState((current) => ({ ...current, profile: payload.profile }));
+    }
+  };
+
+  const handleClaimDailyReward = async () => {
+    const response = await fetch('/api/v1/rewards/daily', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    const payload = await response.json();
+    if (payload.balance) {
+      setState((current) => ({ ...current, wallet: { ...(current.wallet || {}), balance: payload.balance } }));
+    }
+  };
+
+  const handleCreateRoom = async (event) => {
+    event.preventDefault();
+    const response = await fetch('/api/v1/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify(roomForm),
+    });
+    const payload = await response.json();
+    if (payload.room) {
+      setSelectedRoomId(payload.room.id);
+      setState((current) => ({ ...current, rooms: [...(current.rooms || []), payload.room] }));
+    }
+  };
+
+  const handleSendMessage = async (event) => {
+    event.preventDefault();
+    if (!selectedRoomId || !messageText.trim()) return;
+    const response = await fetch(`/api/v1/rooms/${selectedRoomId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify({ text: messageText }),
+    });
+    const payload = await response.json();
+    if (payload.message) {
+      setMessages((current) => [...current, payload.message]);
+      setMessageText('');
+    }
+  };
+
+  const handleCreateVoiceRoom = async (event) => {
+    event.preventDefault();
+    const response = await fetch('/api/v1/voice-rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify(voiceForm),
+    });
+    const payload = await response.json();
+    if (payload.voice_room) {
+      setState((current) => ({ ...current, voiceRooms: [...(current.voiceRooms || []), payload.voice_room] }));
     }
   };
 
@@ -135,10 +220,54 @@ function App() {
         </section>
 
         {state.user ? <ProfilePanel user={state.user} profile={state.profile} /> : null}
+        <section className="panel">
+          <h2>Profile settings</h2>
+          <form onSubmit={handleProfileSave} className="stack">
+            <input value={profileForm.bio} onChange={(event) => setProfileForm({ ...profileForm, bio: event.target.value })} placeholder="Bio" />
+            <input value={profileForm.location} onChange={(event) => setProfileForm({ ...profileForm, location: event.target.value })} placeholder="Location" />
+            <input value={profileForm.theme} onChange={(event) => setProfileForm({ ...profileForm, theme: event.target.value })} placeholder="Theme" />
+            <button type="submit">Save profile</button>
+          </form>
+        </section>
         <FriendsPanel friends={state.friends} />
         <ActivityPanel notifications={state.notifications} rewards={state.rewards} />
         <LeaderboardPanel entries={state.entries || []} />
+        <section className="panel">
+          <h2>Create room</h2>
+          <form onSubmit={handleCreateRoom} className="stack">
+            <input value={roomForm.name} onChange={(event) => setRoomForm({ ...roomForm, name: event.target.value })} placeholder="Room name" />
+            <input value={roomForm.theme} onChange={(event) => setRoomForm({ ...roomForm, theme: event.target.value })} placeholder="Theme" />
+            <button type="submit">Create room</button>
+          </form>
+        </section>
+        <section className="panel">
+          <h2>Realtime chat</h2>
+          <form onSubmit={handleSendMessage} className="stack">
+            <input value={messageText} onChange={(event) => setMessageText(event.target.value)} placeholder="Type a message" />
+            <button type="submit">Send</button>
+          </form>
+          <ul className="list-card">
+            {messages.map((message, index) => (
+              <li key={`${message}-${index}`} className="list-item"><div>{message}</div></li>
+            ))}
+          </ul>
+        </section>
+        <section className="panel">
+          <h2>Voice rooms</h2>
+          <form onSubmit={handleCreateVoiceRoom} className="stack">
+            <input value={voiceForm.name} onChange={(event) => setVoiceForm({ ...voiceForm, name: event.target.value })} placeholder="Voice room name" />
+            <input value={voiceForm.topic} onChange={(event) => setVoiceForm({ ...voiceForm, topic: event.target.value })} placeholder="Topic" />
+            <button type="submit">Open room</button>
+          </form>
+        </section>
         <RoomsPanel rooms={state.rooms || []} />
+        <WalletPanel wallet={state.wallet} />
+        <section className="panel">
+          <h2>Daily rewards</h2>
+          <button onClick={handleClaimDailyReward}>Claim reward</button>
+        </section>
+        <GiftPanel catalog={state.catalog || []} />
+        <MiniGamePanel score={state.minigameScore} />
         {state.reports?.length ? <AdminPanel reports={state.reports} /> : null}
       </main>
     </div>
