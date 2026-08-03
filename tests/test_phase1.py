@@ -41,6 +41,7 @@ def test_auth_and_profile_flow():
             "username": "nova",
             "display_name": "Nova",
             "email": "nova@example.com",
+            "password": "StrongPass123!",
         },
     )
     assert register_response.status_code == 201
@@ -62,6 +63,7 @@ def test_room_and_leaderboard_flow():
             "username": "lyra",
             "display_name": "Lyra",
             "email": "lyra@example.com",
+            "password": "StrongPass123!",
         },
     )
     token = json.loads(register_body)["token"]
