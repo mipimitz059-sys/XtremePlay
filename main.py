@@ -41,6 +41,7 @@ _REWARDS = {}
 _MODERATION = {}
 _FOLLOWS = {}
 _BLOCKS = {}
+_ANALYTICS = {"room_count": 0, "user_count": 0, "daily_reward_claims": 0, "moderation_events": 0}
 _GIFT_CATALOG = [
     {"id": "gift-basic", "name": "Spark", "price": 25, "description": "A quick burst of celebration"},
     {"id": "gift-premium", "name": "Nova", "price": 100, "description": "Premium flair for special moments"},
@@ -125,6 +126,7 @@ async def register_user():
     _RELATIONSHIPS[user_id] = []
     _PROFILE_SETTINGS[user_id] = {"bio": "", "location": "", "theme": "midnight"}
     _REWARDS[user_id] = []
+    _ANALYTICS["user_count"] = len(_USERS)
 
     return _json_response({"token": token, "user": user}, 201)
 
@@ -236,6 +238,7 @@ async def create_room():
         return _error("room name is required", 400)
 
     room_id = f"room-{len(_ROOMS) + 1}"
+    _ANALYTICS["room_count"] = len(_ROOMS) + 1
     room = {
         "id": room_id,
         "name": name,
@@ -355,6 +358,27 @@ async def update_profile_settings():
     return _json_response({"profile": settings})
 
 
+@app.post("/api/v1/notifications/<string:channel>")
+async def create_notification(channel):
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    message = (payload.get("message") or "notification").strip()
+    notification = {"id": f"notif-{len(_NOTIFICATIONS.get(user['id'], [])) + 1}", "channel": channel, "message": message, "created_at": _utcnow()}
+    _NOTIFICATIONS.setdefault(user["id"], []).append(notification)
+    return _json_response({"notification": notification}, 201)
+
+
+@app.get("/api/v1/analytics")
+async def get_analytics():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+    return _json_response({"analytics": _ANALYTICS})
+
+
 @app.post("/api/v1/rewards/daily")
 async def claim_daily_reward():
     user = await _get_current_user()
@@ -366,6 +390,7 @@ async def claim_daily_reward():
     wallet = _ECONOMY.setdefault(user["id"], {"balance": 1000, "ledger": []})
     wallet["balance"] += reward["coins"]
     wallet["ledger"].append({"amount": reward["coins"], "reason": "daily_reward", "created_at": _utcnow()})
+    _ANALYTICS["daily_reward_claims"] = _ANALYTICS.get("daily_reward_claims", 0) + 1
     container.wallet.credit(user["id"], reward["coins"], "daily_reward")
     return _json_response({"reward": reward, "balance": wallet["balance"]})
 
@@ -387,6 +412,7 @@ async def moderate_room(room_id):
 
     moderation = {"room_id": room_id, "action": action, "target_username": target_username, "moderated_at": _utcnow()}
     _MODERATION[moderation["room_id"]] = moderation
+    _ANALYTICS["moderation_events"] = _ANALYTICS.get("moderation_events", 0) + 1
     return _json_response(moderation)
 
 

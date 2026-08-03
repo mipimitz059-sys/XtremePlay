@@ -23,6 +23,8 @@ function App() {
   const [form, setForm] = useState({ username: '', display_name: '', email: '', password: '' });
   const [profileForm, setProfileForm] = useState({ bio: '', location: '', theme: 'midnight' });
   const [roomForm, setRoomForm] = useState({ name: '', theme: 'casual' });
+  const [familyForm, setFamilyForm] = useState({ name: '', tag: 'PHX' });
+  const [notificationText, setNotificationText] = useState('');
   const [voiceForm, setVoiceForm] = useState({ name: '', topic: 'general' });
   const [messageText, setMessageText] = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState('');
@@ -177,6 +179,33 @@ function App() {
     }
   };
 
+  const handleCreateFamily = async (event) => {
+    event.preventDefault();
+    const response = await fetch('/api/v1/families', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify(familyForm),
+    });
+    const payload = await response.json();
+    if (payload.family) {
+      setState((current) => ({ ...current, families: [...(current.families || []), payload.family] }));
+    }
+  };
+
+  const handleSendNotification = async (event) => {
+    event.preventDefault();
+    const response = await fetch('/api/v1/notifications/general', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify({ message: notificationText }),
+    });
+    const payload = await response.json();
+    if (payload.notification) {
+      setState((current) => ({ ...current, notifications: [...(current.notifications || []), payload.notification] }));
+      setNotificationText('');
+    }
+  };
+
   return (
     <div className="app-shell">
       <header className="hero-card">
@@ -259,6 +288,27 @@ function App() {
             <input value={voiceForm.topic} onChange={(event) => setVoiceForm({ ...voiceForm, topic: event.target.value })} placeholder="Topic" />
             <button type="submit">Open room</button>
           </form>
+        </section>
+        <section className="panel">
+          <h2>Families</h2>
+          <form onSubmit={handleCreateFamily} className="stack">
+            <input value={familyForm.name} onChange={(event) => setFamilyForm({ ...familyForm, name: event.target.value })} placeholder="Clan name" />
+            <input value={familyForm.tag} onChange={(event) => setFamilyForm({ ...familyForm, tag: event.target.value })} placeholder="Tag" />
+            <button type="submit">Create clan</button>
+          </form>
+        </section>
+        <section className="panel">
+          <h2>Notifications</h2>
+          <form onSubmit={handleSendNotification} className="stack">
+            <input value={notificationText} onChange={(event) => setNotificationText(event.target.value)} placeholder="Notification message" />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+        <section className="panel">
+          <h2>Analytics snapshot</h2>
+          <div className="muted">Rooms: {state.analytics?.room_count || 0}</div>
+          <div className="muted">Members: {state.analytics?.user_count || 0}</div>
+          <div className="muted">Daily rewards: {state.analytics?.daily_reward_claims || 0}</div>
         </section>
         <RoomsPanel rooms={state.rooms || []} />
         <WalletPanel wallet={state.wallet} />
