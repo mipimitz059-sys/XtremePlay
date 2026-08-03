@@ -4,6 +4,7 @@ import ActivityPanel from './ActivityPanel';
 import FriendsPanel from './FriendsPanel';
 import LeaderboardPanel from './LeaderboardPanel';
 import ProfilePanel from './ProfilePanel';
+import RoomsPanel from './RoomsPanel';
 
 const initialState = {
   user: null,
@@ -43,6 +44,11 @@ function App() {
     fetch('/api/v1/leaderboard', { headers: { Authorization: `Bearer ${state.token}` } })
       .then((response) => response.json())
       .then((payload) => setState((current) => ({ ...current, entries: payload.entries || [] })))
+      .catch(() => {});
+
+    fetch('/api/v1/rooms', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, rooms: payload.rooms || [] })))
       .catch(() => {});
   }, [state.token]);
 
@@ -132,6 +138,7 @@ function App() {
         <FriendsPanel friends={state.friends} />
         <ActivityPanel notifications={state.notifications} rewards={state.rewards} />
         <LeaderboardPanel entries={state.entries || []} />
+        <RoomsPanel rooms={state.rooms || []} />
         {state.reports?.length ? <AdminPanel reports={state.reports} /> : null}
       </main>
     </div>
