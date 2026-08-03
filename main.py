@@ -8,9 +8,12 @@ import quart
 import quart_cors
 from quart import request
 
+from app_config import load_config
+from dependencies import container
+
 app = quart_cors.cors(
     quart.Quart(__name__),
-    allow_origin=os.getenv("XTREMEPLAY_ALLOWED_ORIGIN", "https://chat.openai.com"),
+    allow_origin=container.config.allowed_origin,
 )
 
 # Keep track of todo's. Does not persist if Python session is restarted.
@@ -33,6 +36,9 @@ _RANKINGS = {"daily": {}, "weekly": {}, "global": {}}
 _FAMILIES = {}
 _RELATIONSHIPS = {}
 _REPORTS = []
+_PROFILE_SETTINGS = {}
+_REWARDS = {}
+_MODERATION = {}
 
 
 def _utcnow():
@@ -110,6 +116,8 @@ async def register_user():
     _NOTIFICATIONS.setdefault(user_id, [])
     _ECONOMY[user_id] = {"balance": 1000, "ledger": []}
     _RELATIONSHIPS[user_id] = []
+    _PROFILE_SETTINGS[user_id] = {"bio": "", "location": "", "theme": "midnight"}
+    _REWARDS[user_id] = []
 
     return _json_response({"token": token, "user": user}, 201)
 
@@ -256,6 +264,57 @@ async def list_friends():
         if friend_id in _USERS
     ]
     return _json_response({"friends": friends})
+
+
+@app.post("/api/v1/profile/settings")
+async def update_profile_settings():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    settings = _PROFILE_SETTINGS.setdefault(user["id"], {"bio": "", "location": "", "theme": "midnight"})
+    settings.update({
+        "bio": (payload.get("bio") or settings.get("bio", "")).strip(),
+        "location": (payload.get("location") or settings.get("location", "")).strip(),
+        "theme": (payload.get("theme") or settings.get("theme", "midnight")).strip(),
+    })
+    return _json_response({"profile": settings})
+
+
+@app.post("/api/v1/rewards/daily")
+async def claim_daily_reward():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    reward = {"coins": 150, "label": "daily-login", "claimed_at": _utcnow()}
+    _REWARDS.setdefault(user["id"], []).append(reward)
+    wallet = _ECONOMY.setdefault(user["id"], {"balance": 1000, "ledger": []})
+    wallet["balance"] += reward["coins"]
+    wallet["ledger"].append({"amount": reward["coins"], "reason": "daily_reward", "created_at": _utcnow()})
+    container.wallet.credit(user["id"], reward["coins"], "daily_reward")
+    return _json_response({"reward": reward, "balance": wallet["balance"]})
+
+
+@app.post("/api/v1/rooms/<string:room_id>/moderate")
+async def moderate_room(room_id):
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+    if user.get("role") != "admin":
+        return _error("admin access required", 403)
+
+    payload = await request.get_json(force=True)
+    action = (payload.get("action") or "mute").strip().lower()
+    target_username = _normalize_username(payload.get("target_username"))
+    target_user = next((candidate for candidate in _USERS.values() if candidate["username"] == target_username), None)
+    if not target_user:
+        return _error("target user not found", 404)
+
+    moderation = {"room_id": room_id, "action": action, "target_username": target_username, "moderated_at": _utcnow()}
+    _MODERATION[moderation["room_id"]] = moderation
+    return _json_response(moderation)
 
 
 @app.post("/api/v1/presence")
