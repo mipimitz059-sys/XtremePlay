@@ -27,6 +27,12 @@ _FRIENDS = {}
 _NOTIFICATIONS = {}
 _ROOM_MESSAGES = {}
 _VOICE_ROOMS = {}
+_ECONOMY = {}
+_GIFTS = {}
+_RANKINGS = {"daily": {}, "weekly": {}, "global": {}}
+_FAMILIES = {}
+_RELATIONSHIPS = {}
+_REPORTS = []
 
 
 def _utcnow():
@@ -89,6 +95,7 @@ async def register_user():
         "display_name": display_name or username,
         "email": email,
         "password_hash": _hash_password(password),
+        "role": payload.get("role", "member"),
         "coins": 1000,
         "wallet": {"balance": 0, "currency": "XPL"},
         "created_at": _utcnow(),
@@ -101,6 +108,8 @@ async def register_user():
     _FRIENDS.setdefault(user_id, [])
     _FRIEND_REQUESTS.setdefault(user_id, [])
     _NOTIFICATIONS.setdefault(user_id, [])
+    _ECONOMY[user_id] = {"balance": 1000, "ledger": []}
+    _RELATIONSHIPS[user_id] = []
 
     return _json_response({"token": token, "user": user}, 201)
 
@@ -340,6 +349,127 @@ async def list_voice_rooms():
         return _error("authentication required", 401)
 
     return _json_response({"voice_rooms": list(_VOICE_ROOMS.values())})
+
+
+@app.post("/api/v1/economy/coins")
+async def adjust_coins():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    amount = int(payload.get("amount", 0))
+    reason = (payload.get("reason") or "manual").strip()
+    economy = _ECONOMY.setdefault(user["id"], {"balance": 1000, "ledger": []})
+    economy["balance"] += amount
+    economy["ledger"].append({"amount": amount, "reason": reason, "created_at": _utcnow()})
+    return _json_response({"balance": economy["balance"], "ledger": economy["ledger"]})
+
+
+@app.post("/api/v1/economy/gifts")
+async def create_gift():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    target_username = _normalize_username(payload.get("target_username"))
+    amount = int(payload.get("amount", 0))
+    message = (payload.get("message") or "gift").strip()
+    target_user = next((candidate for candidate in _USERS.values() if candidate["username"] == target_username), None)
+
+    if not target_user or amount <= 0:
+        return _error("valid target user and amount are required", 400)
+
+    gift = {
+        "id": f"gift-{len(_GIFTS) + 1}",
+        "from_user_id": user["id"],
+        "to_user_id": target_user["id"],
+        "amount": amount,
+        "message": message,
+        "created_at": _utcnow(),
+    }
+    _GIFTS[gift["id"]] = gift
+    _NOTIFICATIONS.setdefault(target_user["id"], []).append({"type": "gift", "message": f"{user['display_name']} sent you {amount} coins"})
+    return _json_response({"gift": gift}, 201)
+
+
+@app.post("/api/v1/rankings/<string:period>")
+async def update_ranking(period):
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    score = int(payload.get("score", 0))
+    bucket = _RANKINGS.setdefault(period, {})
+    bucket[user["id"]] = {"user_id": user["id"], "username": user["username"], "score": score, "period": period}
+    entries = sorted(bucket.values(), key=lambda item: item["score"], reverse=True)
+    return _json_response({"entry": bucket[user["id"]], "entries": entries})
+
+
+@app.post("/api/v1/families")
+async def create_family():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    name = (payload.get("name") or "").strip()
+    tag = (payload.get("tag") or "CLAN").strip().upper()
+    if not name:
+        return _error("family name is required", 400)
+
+    family = {"id": f"family-{len(_FAMILIES) + 1}", "name": name, "tag": tag, "owner_id": user["id"], "members": [user["id"]]}
+    _FAMILIES[family["id"]] = family
+    return _json_response({"family": family}, 201)
+
+
+@app.post("/api/v1/relationships")
+async def create_relationship():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    target_username = _normalize_username(payload.get("target_username"))
+    relation_type = (payload.get("type") or "bff").strip().lower()
+    target_user = next((candidate for candidate in _USERS.values() if candidate["username"] == target_username), None)
+    if not target_user and target_username != user["username"]:
+        return _error("valid target user is required", 400)
+
+    target_id = target_user["id"] if target_user else user["id"]
+    relationship = {"id": f"relationship-{len(_RELATIONSHIPS.get(user['id'], [])) + 1}", "from_user_id": user["id"], "to_user_id": target_id, "type": relation_type}
+    _RELATIONSHIPS.setdefault(user["id"], []).append(relationship)
+    return _json_response({"relationship": relationship}, 201)
+
+
+@app.post("/api/v1/reports")
+async def create_report():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    target_username = _normalize_username(payload.get("target_username"))
+    reason = (payload.get("reason") or "spam").strip()
+    target_user = next((candidate for candidate in _USERS.values() if candidate["username"] == target_username), None)
+    if not target_user:
+        return _error("target user not found", 404)
+
+    report = {"id": f"report-{len(_REPORTS) + 1}", "from_user_id": user["id"], "target_user_id": target_user["id"], "reason": reason, "created_at": _utcnow()}
+    _REPORTS.append(report)
+    return _json_response({"report": report}, 201)
+
+
+@app.get("/api/v1/admin/reports")
+async def list_admin_reports():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+    if user.get("role") != "admin":
+        return _error("admin access required", 403)
+    return _json_response({"reports": _REPORTS})
 
 
 @app.post("/api/v1/leaderboard/score")

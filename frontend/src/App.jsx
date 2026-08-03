@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import AdminPanel from './AdminPanel';
 
 const initialState = {
   user: null,
@@ -18,6 +19,11 @@ function App() {
     fetch('/api/v1/me', { headers: { Authorization: `Bearer ${state.token}` } })
       .then((response) => response.json())
       .then((payload) => setState((current) => ({ ...current, user: payload.user })))
+      .catch(() => {});
+
+    fetch('/api/v1/admin/reports', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, reports: payload.reports || [] })))
       .catch(() => {});
   }, [state.token]);
 
@@ -102,6 +108,8 @@ function App() {
             ))}
           </ul>
         </section>
+
+        {state.reports?.length ? <AdminPanel reports={state.reports} /> : null}
       </main>
     </div>
   );
