@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdminPanel from './AdminPanel';
+import ActivityPanel from './ActivityPanel';
+import ProfilePanel from './ProfilePanel';
 
 const initialState = {
   user: null,
@@ -10,7 +12,7 @@ const initialState = {
 };
 
 function App() {
-  const [state, setState] = useState(initialState);
+  const [state, setState] = useState({ ...initialState, reports: [], profile: {}, rewards: [], notifications: [] });
   const [query, setQuery] = useState('');
   const [form, setForm] = useState({ username: '', display_name: '', email: '', password: '' });
 
@@ -24,6 +26,11 @@ function App() {
     fetch('/api/v1/admin/reports', { headers: { Authorization: `Bearer ${state.token}` } })
       .then((response) => response.json())
       .then((payload) => setState((current) => ({ ...current, reports: payload.reports || [] })))
+      .catch(() => {});
+
+    fetch('/api/v1/notifications', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, notifications: payload.notifications || [] })))
       .catch(() => {});
   }, [state.token]);
 
@@ -109,6 +116,8 @@ function App() {
           </ul>
         </section>
 
+        {state.user ? <ProfilePanel user={state.user} profile={state.profile} /> : null}
+        <ActivityPanel notifications={state.notifications} rewards={state.rewards} />
         {state.reports?.length ? <AdminPanel reports={state.reports} /> : null}
       </main>
     </div>
