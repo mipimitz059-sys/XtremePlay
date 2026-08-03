@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdminPanel from './AdminPanel';
 import ActivityPanel from './ActivityPanel';
+import FriendsPanel from './FriendsPanel';
+import LeaderboardPanel from './LeaderboardPanel';
 import ProfilePanel from './ProfilePanel';
 
 const initialState = {
@@ -31,6 +33,16 @@ function App() {
     fetch('/api/v1/notifications', { headers: { Authorization: `Bearer ${state.token}` } })
       .then((response) => response.json())
       .then((payload) => setState((current) => ({ ...current, notifications: payload.notifications || [] })))
+      .catch(() => {});
+
+    fetch('/api/v1/friends', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, friends: payload.friends || [] })))
+      .catch(() => {});
+
+    fetch('/api/v1/leaderboard', { headers: { Authorization: `Bearer ${state.token}` } })
+      .then((response) => response.json())
+      .then((payload) => setState((current) => ({ ...current, entries: payload.entries || [] })))
       .catch(() => {});
   }, [state.token]);
 
@@ -117,7 +129,9 @@ function App() {
         </section>
 
         {state.user ? <ProfilePanel user={state.user} profile={state.profile} /> : null}
+        <FriendsPanel friends={state.friends} />
         <ActivityPanel notifications={state.notifications} rewards={state.rewards} />
+        <LeaderboardPanel entries={state.entries || []} />
         {state.reports?.length ? <AdminPanel reports={state.reports} /> : null}
       </main>
     </div>
