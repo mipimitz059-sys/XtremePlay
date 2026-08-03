@@ -25,6 +25,8 @@ _PRESENCE = {}
 _FRIEND_REQUESTS = {}
 _FRIENDS = {}
 _NOTIFICATIONS = {}
+_ROOM_MESSAGES = {}
+_VOICE_ROOMS = {}
 
 
 def _utcnow():
@@ -269,6 +271,75 @@ async def list_notifications():
 
     notifications = _NOTIFICATIONS.get(user["id"], [])
     return _json_response({"notifications": notifications})
+
+
+@app.post("/api/v1/rooms/<string:room_id>/messages")
+async def create_room_message(room_id):
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return _error("message text is required", 400)
+
+    room_messages = _ROOM_MESSAGES.setdefault(room_id, [])
+    message = {
+        "id": f"msg-{len(room_messages) + 1}",
+        "room_id": room_id,
+        "user_id": user["id"],
+        "username": user["username"],
+        "text": text,
+        "created_at": _utcnow(),
+    }
+    room_messages.append(message)
+    return _json_response({"message": message}, 201)
+
+
+@app.get("/api/v1/rooms/<string:room_id>/messages")
+async def list_room_messages(room_id):
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    room_messages = _ROOM_MESSAGES.get(room_id, [])
+    return _json_response({"messages": room_messages})
+
+
+@app.post("/api/v1/voice-rooms")
+async def create_voice_room():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    payload = await request.get_json(force=True)
+    name = (payload.get("name") or "").strip()
+    topic = (payload.get("topic") or "general").strip()
+
+    if not name:
+        return _error("voice room name is required", 400)
+
+    room_id = f"voice-{len(_VOICE_ROOMS) + 1}"
+    voice_room = {
+        "id": room_id,
+        "name": name,
+        "topic": topic,
+        "host_id": user["id"],
+        "participants": [user["id"]],
+        "created_at": _utcnow(),
+    }
+    _VOICE_ROOMS[room_id] = voice_room
+    return _json_response({"voice_room": voice_room}, 201)
+
+
+@app.get("/api/v1/voice-rooms")
+async def list_voice_rooms():
+    user = await _get_current_user()
+    if not user:
+        return _error("authentication required", 401)
+
+    return _json_response({"voice_rooms": list(_VOICE_ROOMS.values())})
 
 
 @app.post("/api/v1/leaderboard/score")
