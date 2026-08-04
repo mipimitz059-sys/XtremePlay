@@ -101,6 +101,9 @@ async def register_user():
     if any(user["username"] == username for user in _USERS.values()):
         return _error("username already exists", 409)
 
+    if any(user.get("email", "").lower() == email for user in _USERS.values()):
+        return _error("email already exists", 409)
+
     user_id = f"user-{len(_USERS) + 1}"
     token = secrets.token_urlsafe(24)
     user = {

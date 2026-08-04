@@ -55,3 +55,30 @@ def test_notifications_family_and_analytics():
     analytics_response, analytics_body = run_request("GET", "/api/v1/analytics", token=token)
     assert analytics_response.status_code == 200
     assert json.loads(analytics_body)["analytics"]["room_count"] >= 0
+
+
+def test_duplicate_email_registration_is_rejected():
+    first_response, _ = run_request(
+        "POST",
+        "/api/v1/auth/register",
+        json_body={
+            "username": "firstdup",
+            "display_name": "First",
+            "email": "shared@example.com",
+            "password": "StrongPass123!",
+        },
+    )
+    assert first_response.status_code == 201
+
+    second_response, second_body = run_request(
+        "POST",
+        "/api/v1/auth/register",
+        json_body={
+            "username": "seconddup",
+            "display_name": "Second",
+            "email": "shared@example.com",
+            "password": "StrongPass123!",
+        },
+    )
+    assert second_response.status_code == 409
+    assert json.loads(second_body)["error"] == "email already exists"
