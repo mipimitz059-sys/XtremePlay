@@ -1,29 +1,43 @@
 from quart import Blueprint, request
 
+from backend.auth.service import register, login
+
 auth_bp = Blueprint("auth", __name__)
 
-_USERS = {}
 
 @auth_bp.post("/register")
-async def register():
+async def register_route():
     data = await request.get_json()
 
     username = data.get("username")
+    password = data.get("password")
 
-    if username in _USERS:
-        return {"error": "Username already exists"}, 409
+    result = register(username, password)
 
-    _USERS[username] = data
+    if not result["success"]:
+        return result, 409
 
-    return {
-        "success": True,
-        "user": _USERS[username]
-    }, 201
+    return result, 201
+
+
+@auth_bp.post("/login")
+async def login_route():
+    data = await request.get_json()
+
+    username = data.get("username")
+    password = data.get("password")
+
+    result = login(username, password)
+
+    if not result["success"]:
+        return result, 401
+
+    return result
 
 
 @auth_bp.get("/health")
 async def auth_health():
     return {
         "module": "auth",
-        "status": "ok"
+        "status": "ok",
     }

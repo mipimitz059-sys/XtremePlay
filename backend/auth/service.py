@@ -5,17 +5,24 @@ from backend.auth.utils import (
     create_refresh_token,
 )
 
-_USERS = {}
+from backend.database.db import create_user, get_user
 
 
 def register(username: str, password: str):
-    if username in _USERS:
-        return {"success": False, "message": "User already exists"}
+    print("USERNAME =", username)
+    print("PASSWORD =", password)
+    print("PASSWORD TYPE =", type(password))
+    print("PASSWORD LENGTH =", len(password))
 
-    _USERS[username] = {
-        "username": username,
-        "password": hash_password(password),
-    }
+    user = get_user(username)
+
+    if user:
+        return {
+            "success": False,
+            "message": "User already exists",
+        }
+
+    create_user(username, hash_password(password))
 
     return {
         "success": True,
@@ -26,19 +33,25 @@ def register(username: str, password: str):
 
 
 def login(username: str, password: str):
-    user = _USERS.get(username)
+    user = get_user(username)
 
     if not user:
-        return {"success": False, "message": "Invalid credentials"}
+        return {
+            "success": False,
+            "message": "Invalid credentials",
+        }
 
     if not verify_password(password, user["password"]):
-        return {"success": False, "message": "Invalid credentials"}
+        return {
+            "success": False,
+            "message": "Invalid credentials",
+        }
 
     return {
         "success": True,
         "access_token": create_access_token(username),
         "refresh_token": create_refresh_token(username),
         "user": {
-            "username": username,
+            "username": user["username"],
         },
     }
