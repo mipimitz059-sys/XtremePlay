@@ -12,9 +12,10 @@ def get_connection():
 def init_db():
     conn = get_connection()
 
-    # ------------------------
-    # Users Table
-    # ------------------------
+    # =====================================================
+    # USERS TABLE
+    # =====================================================
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,9 +25,10 @@ def init_db():
         )
     """)
 
-    # ------------------------
-    # Profiles Table
-    # ------------------------
+    # =====================================================
+    # PROFILES TABLE
+    # =====================================================
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS profiles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +57,46 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
             FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+
+    # =====================================================
+    # FRIEND REQUESTS TABLE
+    # =====================================================
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+
+            status TEXT DEFAULT 'pending',
+
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY(sender_id) REFERENCES users(id),
+            FOREIGN KEY(receiver_id) REFERENCES users(id)
+        )
+    """)
+
+    # =====================================================
+    # FRIENDS TABLE
+    # =====================================================
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS friends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            user_id INTEGER NOT NULL,
+            friend_id INTEGER NOT NULL,
+
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(friend_id) REFERENCES users(id),
+
+            UNIQUE(user_id, friend_id)
         )
     """)
 
@@ -186,3 +228,122 @@ def update_profile(
 
     conn.commit()
     conn.close()
+
+
+# =====================================================
+# FRIEND REQUESTS
+# =====================================================
+
+def create_friend_request(sender_id: int, receiver_id: int):
+    conn = get_connection()
+
+    conn.execute(
+        """
+        INSERT INTO friend_requests (
+            sender_id,
+            receiver_id
+        )
+        VALUES (?, ?)
+        """,
+        (
+            sender_id,
+            receiver_id,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_friend_request(sender_id: int, receiver_id: int):
+    conn = get_connection()
+
+    request = conn.execute(
+        """
+        SELECT *
+        FROM friend_requests
+        WHERE sender_id = ?
+        AND receiver_id = ?
+        """,
+        (
+            sender_id,
+            receiver_id,
+        ),
+    ).fetchone()
+
+    conn.close()
+
+    return request
+
+
+def update_friend_request(request_id: int, status: str):
+    conn = get_connection()
+
+    conn.execute(
+        """
+        UPDATE friend_requests
+        SET status = ?
+        WHERE id = ?
+        """,
+        (
+            status,
+            request_id,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# =====================================================
+# FRIENDS
+# =====================================================
+
+def add_friend(user_id: int, friend_id: int):
+    conn = get_connection()
+
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO friends (
+            user_id,
+            friend_id
+        )
+        VALUES (?, ?)
+        """,
+        (
+            user_id,
+            friend_id,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_friends(user_id: int):
+    conn = get_connection()
+
+    friends = conn.execute(
+        """
+        SELECT
+            users.id,
+            users.username,
+            profiles.display_name,
+            profiles.avatar_url
+
+        FROM friends
+
+        JOIN users
+            ON users.id = friends.friend_id
+
+        LEFT JOIN profiles
+            ON profiles.user_id = users.id
+
+        WHERE friends.user_id = ?
+        """,
+        (user_id,),
+    ).fetchall()
+
+    conn.close()
+
+    return friends

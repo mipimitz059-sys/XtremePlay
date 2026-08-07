@@ -4,10 +4,14 @@ from datetime import datetime, timedelta, UTC
 import jwt
 from dotenv import load_dotenv
 from passlib.context import CryptContext
+from jwt import ExpiredSignatureError, InvalidTokenError
 
 load_dotenv()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "xtremeplay-dev-secret")
 ALGORITHM = "HS256"
@@ -24,25 +28,72 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(user_id: str):
+def create_access_token(user_id: int):
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "type": "access",
         "exp": datetime.now(UTC)
         + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    return jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
 
 
-def create_refresh_token(user_id: str):
+def create_refresh_token(user_id: int):
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "type": "refresh",
         "exp": datetime.now(UTC)
         + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    return jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
 
 
 def decode_token(token: str):
-    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    """
+    Decode any valid JWT.
+    Raises an exception if invalid.
+    """
+
+    payload = jwt.decode(
+        token,
+        SECRET_KEY,
+        algorithms=[ALGORITHM],
+    )
+
+    return payload
+
+
+def decode_access_token(token: str):
+    """
+    Decode only access tokens.
+    """
+
+    payload = decode_token(token)
+
+    if payload.get("type") != "access":
+        raise InvalidTokenError("Invalid token type")
+
+    return payload
+
+
+def decode_refresh_token(token: str):
+    """
+    Decode only refresh tokens.
+    """
+
+    payload = decode_token(token)
+
+    if payload.get("type") != "refresh":
+        raise InvalidTokenError("Invalid token type")
+
+    return payload
