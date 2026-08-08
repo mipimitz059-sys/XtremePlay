@@ -39,17 +39,20 @@ class RoomPrincipal:
 def _get_access_token() -> str | None:
     authorization = websocket.headers.get("Authorization", "")
 
-    scheme, _, token = authorization.partition(" ")
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
 
-    if scheme.lower() != "bearer":
-        return None
+        if scheme.lower() == "bearer":
+            token = token.strip()
+            if token:
+                return token
 
-    token = token.strip()
+    # Browser WebSocket clients cannot set arbitrary Authorization headers.
+    # Accept the short-lived access token as a query parameter for browser
+    # compatibility. Never log the query string.
+    token = websocket.args.get("access_token", "").strip()
 
-    if not token:
-        return None
-
-    return token
+    return token or None
 
 
 def _authenticate() -> int | None:
