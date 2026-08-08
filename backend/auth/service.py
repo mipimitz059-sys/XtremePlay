@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy.exc import IntegrityError
 
 from backend.auth.utils import (
@@ -6,23 +8,21 @@ from backend.auth.utils import (
     create_access_token,
     create_refresh_token,
 )
-
 from backend.database.session import SessionLocal
-
 from backend.models.user import User
 from backend.models.profile import Profile
 
 
 def register(username: str, password: str):
+    """Register a new XtremePlay user and create their profile."""
 
     session = SessionLocal()
 
     try:
-
         username = (username or "").strip()
         password = password or ""
 
-        if username == "" or password == "":
+        if not username or not password:
             return {
                 "success": False,
                 "message": "Username and password are required",
@@ -46,7 +46,6 @@ def register(username: str, password: str):
         )
 
         session.add(user)
-
         session.flush()
 
         profile = Profile(
@@ -61,9 +60,7 @@ def register(username: str, password: str):
         )
 
         session.add(profile)
-
         session.commit()
-
         session.refresh(user)
 
         return {
@@ -75,7 +72,6 @@ def register(username: str, password: str):
         }
 
     except IntegrityError:
-
         session.rollback()
 
         return {
@@ -83,34 +79,32 @@ def register(username: str, password: str):
             "message": "User already exists",
         }
 
-    except Exception as e:
-
+    except Exception as exc:
         session.rollback()
 
         print("\nREGISTER ERROR")
-        print(type(e).__name__)
-        print(str(e))
+        print(type(exc).__name__)
+        print(str(exc))
 
         return {
             "success": False,
-            "message": str(e),
+            "message": "Registration failed",
         }
 
     finally:
-
         session.close()
 
 
 def login(username: str, password: str):
+    """Authenticate a user and issue access and refresh JWTs."""
 
     session = SessionLocal()
 
     try:
-
         username = (username or "").strip()
         password = password or ""
 
-        if username == "" or password == "":
+        if not username or not password:
             return {
                 "success": False,
                 "message": "Username and password are required",
@@ -134,30 +128,25 @@ def login(username: str, password: str):
                 "message": "Invalid credentials",
             }
 
-        access_token = create_access_token(user.id)
-        refresh_token = create_refresh_token(user.id)
-
         return {
             "success": True,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
+            "access_token": create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
             "user": {
                 "id": user.id,
                 "username": user.username,
             },
         }
 
-    except Exception as e:
-
+    except Exception as exc:
         print("\nLOGIN ERROR")
-        print(type(e).__name__)
-        print(str(e))
+        print(type(exc).__name__)
+        print(str(exc))
 
         return {
             "success": False,
-            "message": str(e),
+            "message": "Login failed",
         }
 
     finally:
-
         session.close()
