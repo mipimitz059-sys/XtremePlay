@@ -6,23 +6,39 @@ from backend.database.db import init_db
 from backend.auth.routes import auth_bp
 from backend.profile.routes import profile_bp
 from backend.friends.routes import friends_bp
+from backend.rooms.routes import rooms_bp
+from backend.chat.routes import chat_bp
+from backend.websocket.routes import websocket_bp
 
 
-def create_app():
+def create_app() -> Quart:
     app = Quart(__name__)
+
+    # =====================================================
+    # CORS
+    # =====================================================
 
     app = quart_cors.cors(
         app,
         allow_origin="*",
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=[
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "OPTIONS",
+        ],
         allow_headers=["*"],
     )
 
-    # Initialize database
+    # =====================================================
+    # DATABASE
+    # =====================================================
+
     init_db()
 
     # =====================================================
-    # Register Blueprints
+    # AUTHENTICATION
     # =====================================================
 
     app.register_blueprint(
@@ -30,17 +46,49 @@ def create_app():
         url_prefix="/api/v1/auth",
     )
 
+    # =====================================================
+    # PROFILE
+    # =====================================================
+
     app.register_blueprint(
         profile_bp,
         url_prefix="/api/v1/profile",
     )
+
+    # =====================================================
+    # FRIENDS
+    # =====================================================
 
     app.register_blueprint(
         friends_bp,
     )
 
     # =====================================================
-    # Health Check
+    # ROOMS
+    # =====================================================
+
+    app.register_blueprint(
+        rooms_bp,
+    )
+
+    # =====================================================
+    # CHAT
+    # =====================================================
+
+    app.register_blueprint(
+        chat_bp,
+    )
+
+    # =====================================================
+    # REAL-TIME WEBSOCKET
+    # =====================================================
+
+    app.register_blueprint(
+        websocket_bp,
+    )
+
+    # =====================================================
+    # HEALTH CHECK
     # =====================================================
 
     @app.get("/health")
@@ -48,19 +96,30 @@ def create_app():
         return {
             "status": "ok",
             "service": "XtremePlay Backend",
-            "version": "1.1.0",
+            "version": "1.3.0",
             "modules": {
                 "auth": "enabled",
                 "profile": "enabled",
                 "friends": "enabled",
+                "rooms": "enabled",
+                "chat": "enabled",
+                "websocket": "enabled",
             },
         }
 
     return app
 
 
+# =========================================================
+# APPLICATION INSTANCE
+# =========================================================
+
 app = create_app()
 
+
+# =========================================================
+# DEVELOPMENT SERVER
+# =========================================================
 
 if __name__ == "__main__":
     app.run(

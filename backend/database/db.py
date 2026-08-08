@@ -1,349 +1,374 @@
+from pathlib import Path
 import sqlite3
 
-DATABASE = "xtremeplay.db"
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
+from backend.database.base import Base
+
+
+# ==========================================================
+# DATABASE CONFIGURATION
+# ==========================================================
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+DATABASE_PATH = BASE_DIR / "xtremeplay.db"
+
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
+
+# ==========================================================
+# LEGACY SQLITE CONNECTION
+#
+# Existing modules such as friends/service.py use this API.
+# Keep it available while the application migrates to
+# SQLAlchemy.
+# ==========================================================
 
 def get_connection():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """
+    Return a SQLite connection compatible with the existing
+    friends/profile/database services.
 
+    Row objects can be accessed by column name.
+    """
 
-def init_db():
-    conn = get_connection()
-
-    # =====================================================
-    # USERS TABLE
-    # =====================================================
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # =====================================================
-    # PROFILES TABLE
-    # =====================================================
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS profiles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            user_id INTEGER UNIQUE NOT NULL,
-
-            display_name TEXT,
-            bio TEXT DEFAULT '',
-            avatar_url TEXT DEFAULT '',
-            cover_url TEXT DEFAULT '',
-
-            gender TEXT DEFAULT '',
-            birthday TEXT DEFAULT '',
-            country TEXT DEFAULT '',
-
-            level INTEGER DEFAULT 1,
-            xp INTEGER DEFAULT 0,
-
-            coins INTEGER DEFAULT 0,
-            diamonds INTEGER DEFAULT 0,
-
-            followers INTEGER DEFAULT 0,
-            following INTEGER DEFAULT 0,
-
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        )
-    """)
-
-    # =====================================================
-    # FRIEND REQUESTS TABLE
-    # =====================================================
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS friend_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            sender_id INTEGER NOT NULL,
-            receiver_id INTEGER NOT NULL,
-
-            status TEXT DEFAULT 'pending',
-
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            FOREIGN KEY(sender_id) REFERENCES users(id),
-            FOREIGN KEY(receiver_id) REFERENCES users(id)
-        )
-    """)
-
-    # =====================================================
-    # FRIENDS TABLE
-    # =====================================================
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS friends (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            user_id INTEGER NOT NULL,
-            friend_id INTEGER NOT NULL,
-
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            FOREIGN KEY(user_id) REFERENCES users(id),
-            FOREIGN KEY(friend_id) REFERENCES users(id),
-
-            UNIQUE(user_id, friend_id)
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-# =====================================================
-# USERS
-# =====================================================
-
-def create_user(username: str, password: str):
-    conn = get_connection()
-
-    cursor = conn.execute(
-        """
-        INSERT INTO users (username, password)
-        VALUES (?, ?)
-        """,
-        (username, password),
+    connection = sqlite3.connect(
+        DATABASE_PATH,
+        timeout=30,
     )
 
-    user_id = cursor.lastrowid
+    connection.row_factory = sqlite3.Row
 
-    conn.commit()
-    conn.close()
+    # Enable foreign-key enforcement for this connection.
+    connection.execute("PRAGMA foreign_keys = ON")
 
-    return user_id
+    return connection
+
+
+# ==========================================================
+# SQLALCHEMY ENGINE
+# ==========================================================
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30,
+    },
+    future=True,
+)
+
+
+# ==========================================================
+# SQLALCHEMY SESSION
+# ==========================================================
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+)
+
+
+# ==========================================================
+# MODEL REGISTRATION
+# ==========================================================
+
+def load_models():
+    """
+    Import all models so SQLAlchemy registers their metadata.
+    """
+
+    from backend.models.user import User
+    from backend.models.profile import Profile
+    from backend.models.friend import Friend
+    from backend.models.friend_request import FriendRequest
+    from backend.models.message import Message
+    from backend.models.room import Room
+    from backend.models.room_member import RoomMember
+
+    return {
+        "User": User,
+        "Profile": Profile,
+        "Friend": Friend,
+        "FriendRequest": FriendRequest,
+        "Message": Message,
+        "Room": Room,
+        "RoomMember": RoomMember,
+    }
+
+
+# ==========================================================
+# DATABASE INITIALIZATION
+# ==========================================================
+
+def init_db():
+    """
+    Initialize the database without destroying existing data.
+    """
+
+    load_models()
+
+    Base.metadata.create_all(bind=engine)
+
+    print("=" * 60)
+    print("XtremePlay database initialized successfully")
+    print("=" * 60)
+
+
+# ==========================================================
+# USER FUNCTIONS
+# ==========================================================
+
+def create_user(
+    username: str,
+    password: str,
+):
+    """
+    Create a new user.
+
+    Password must already be hashed.
+    """
+
+    models = load_models()
+    User = models["User"]
+
+    db = SessionLocal()
+
+    try:
+        user = User(
+            username=username,
+            password=password,
+        )
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return user.id
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
 
 
 def get_user(username: str):
-    conn = get_connection()
+    """
+    Retrieve a user by username.
+    """
 
-    user = conn.execute(
-        """
-        SELECT *
-        FROM users
-        WHERE username = ?
-        """,
-        (username,),
-    ).fetchone()
+    models = load_models()
+    User = models["User"]
 
-    conn.close()
+    db = SessionLocal()
 
-    return user
+    try:
+        user = db.execute(
+            select(User).where(
+                User.username == username
+            )
+        ).scalar_one_or_none()
+
+        if user is None:
+            return None
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "password": user.password,
+        }
+
+    finally:
+        db.close()
 
 
 def get_user_by_id(user_id: int):
-    conn = get_connection()
+    """
+    Retrieve a user by ID.
+    """
 
-    user = conn.execute(
-        """
-        SELECT *
-        FROM users
-        WHERE id = ?
-        """,
-        (user_id,),
-    ).fetchone()
+    models = load_models()
+    User = models["User"]
 
-    conn.close()
+    db = SessionLocal()
 
-    return user
+    try:
+        user = db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "password": user.password,
+        }
+
+    finally:
+        db.close()
 
 
-# =====================================================
-# PROFILES
-# =====================================================
-
-def create_profile(user_id: int, display_name: str):
-    conn = get_connection()
-
-    conn.execute(
-        """
-        INSERT INTO profiles (user_id, display_name)
-        VALUES (?, ?)
-        """,
-        (
-            user_id,
-            display_name,
-        ),
-    )
-
-    conn.commit()
-    conn.close()
-
+# ==========================================================
+# PROFILE FUNCTIONS
+# ==========================================================
 
 def get_profile(user_id: int):
-    conn = get_connection()
+    """
+    Retrieve a profile by user ID.
+    """
 
-    profile = conn.execute(
-        """
-        SELECT *
-        FROM profiles
-        WHERE user_id = ?
-        """,
-        (user_id,),
-    ).fetchone()
+    models = load_models()
+    Profile = models["Profile"]
 
-    conn.close()
+    db = SessionLocal()
 
-    return profile
+    try:
+        profile = db.execute(
+            select(Profile).where(
+                Profile.user_id == user_id
+            )
+        ).scalar_one_or_none()
+
+        if profile is None:
+            return None
+
+        return {
+            "id": profile.id,
+            "user_id": profile.user_id,
+            "display_name": profile.display_name,
+            "bio": profile.bio,
+            "avatar_url": profile.avatar_url,
+            "level": profile.level,
+            "xp": profile.xp,
+            "coins": profile.coins,
+            "diamonds": profile.diamonds,
+        }
+
+    finally:
+        db.close()
+
+
+def create_profile(
+    user_id: int,
+    display_name: str = "",
+    bio: str = "",
+    avatar_url: str = "",
+):
+    """
+    Create a profile if one does not already exist.
+    """
+
+    models = load_models()
+    Profile = models["Profile"]
+
+    db = SessionLocal()
+
+    try:
+        existing = db.execute(
+            select(Profile).where(
+                Profile.user_id == user_id
+            )
+        ).scalar_one_or_none()
+
+        if existing is not None:
+            return existing.id
+
+        profile = Profile(
+            user_id=user_id,
+            display_name=display_name,
+            bio=bio,
+            avatar_url=avatar_url,
+        )
+
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+
+        return profile.id
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
 
 
 def update_profile(
     user_id: int,
-    display_name: str,
-    bio: str,
-    country: str,
+    display_name=None,
+    bio=None,
+    avatar_url=None,
 ):
-    conn = get_connection()
+    """
+    Update only fields supplied by the caller.
+    """
 
-    conn.execute(
-        """
-        UPDATE profiles
-        SET
-            display_name = ?,
-            bio = ?,
-            country = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-        """,
-        (
-            display_name,
-            bio,
-            country,
-            user_id,
-        ),
-    )
+    models = load_models()
+    Profile = models["Profile"]
 
-    conn.commit()
-    conn.close()
+    db = SessionLocal()
 
+    try:
+        profile = db.execute(
+            select(Profile).where(
+                Profile.user_id == user_id
+            )
+        ).scalar_one_or_none()
 
-# =====================================================
-# FRIEND REQUESTS
-# =====================================================
+        if profile is None:
+            return None
 
-def create_friend_request(sender_id: int, receiver_id: int):
-    conn = get_connection()
+        if display_name is not None:
+            profile.display_name = display_name
 
-    conn.execute(
-        """
-        INSERT INTO friend_requests (
-            sender_id,
-            receiver_id
-        )
-        VALUES (?, ?)
-        """,
-        (
-            sender_id,
-            receiver_id,
-        ),
-    )
+        if bio is not None:
+            profile.bio = bio
 
-    conn.commit()
-    conn.close()
+        if avatar_url is not None:
+            profile.avatar_url = avatar_url
 
+        db.commit()
+        db.refresh(profile)
 
-def get_friend_request(sender_id: int, receiver_id: int):
-    conn = get_connection()
+        return {
+            "id": profile.id,
+            "user_id": profile.user_id,
+            "display_name": profile.display_name,
+            "bio": profile.bio,
+            "avatar_url": profile.avatar_url,
+            "level": profile.level,
+            "xp": profile.xp,
+            "coins": profile.coins,
+            "diamonds": profile.diamonds,
+        }
 
-    request = conn.execute(
-        """
-        SELECT *
-        FROM friend_requests
-        WHERE sender_id = ?
-        AND receiver_id = ?
-        """,
-        (
-            sender_id,
-            receiver_id,
-        ),
-    ).fetchone()
+    except Exception:
+        db.rollback()
+        raise
 
-    conn.close()
-
-    return request
+    finally:
+        db.close()
 
 
-def update_friend_request(request_id: int, status: str):
-    conn = get_connection()
+# ==========================================================
+# SQLALCHEMY SESSION HELPER
+# ==========================================================
 
-    conn.execute(
-        """
-        UPDATE friend_requests
-        SET status = ?
-        WHERE id = ?
-        """,
-        (
-            status,
-            request_id,
-        ),
-    )
+def get_db():
+    """
+    Yield a SQLAlchemy session.
+    """
 
-    conn.commit()
-    conn.close()
+    db = SessionLocal()
 
-
-# =====================================================
-# FRIENDS
-# =====================================================
-
-def add_friend(user_id: int, friend_id: int):
-    conn = get_connection()
-
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO friends (
-            user_id,
-            friend_id
-        )
-        VALUES (?, ?)
-        """,
-        (
-            user_id,
-            friend_id,
-        ),
-    )
-
-    conn.commit()
-    conn.close()
-
-
-def get_friends(user_id: int):
-    conn = get_connection()
-
-    friends = conn.execute(
-        """
-        SELECT
-            users.id,
-            users.username,
-            profiles.display_name,
-            profiles.avatar_url
-
-        FROM friends
-
-        JOIN users
-            ON users.id = friends.friend_id
-
-        LEFT JOIN profiles
-            ON profiles.user_id = users.id
-
-        WHERE friends.user_id = ?
-        """,
-        (user_id,),
-    ).fetchall()
-
-    conn.close()
-
-    return friends
+    try:
+        yield db
+    finally:
+        db.close()

@@ -1,43 +1,71 @@
-from quart import Blueprint, request
+from quart import Blueprint, request, jsonify
 
-from backend.auth.service import register, login
+from backend.auth.service import (
+    register,
+    login,
+)
 
-auth_bp = Blueprint("auth", __name__)
+auth_bp = Blueprint(
+    "auth",
+    __name__,
+)
 
 
 @auth_bp.post("/register")
 async def register_route():
+
     data = await request.get_json()
+
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Missing JSON body",
+        }), 400
 
     username = data.get("username")
     password = data.get("password")
 
-    result = register(username, password)
+    result = register(
+        username=username,
+        password=password,
+    )
 
-    if not result["success"]:
-        return result, 409
+    if result["success"]:
+        return jsonify(result), 201
 
-    return result, 201
+    return jsonify(result), 409
 
 
 @auth_bp.post("/login")
 async def login_route():
+
     data = await request.get_json()
+
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Missing JSON body",
+        }), 400
 
     username = data.get("username")
     password = data.get("password")
 
-    result = login(username, password)
+    result = login(
+        username=username,
+        password=password,
+    )
 
-    if not result["success"]:
-        return result, 401
+    if result["success"]:
+        return jsonify(result)
 
-    return result
+    return jsonify(result), 401
 
 
 @auth_bp.get("/health")
 async def auth_health():
-    return {
+
+    return jsonify({
         "module": "auth",
         "status": "ok",
-    }
+        "database": "sqlalchemy",
+    })
