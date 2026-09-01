@@ -1,0 +1,8 @@
+version: '3.9'
+services:
+  api:
+    build: .
+    ports:
+      - "5003:5003"
+    environment:
+      XTREMEPLAY_ALLOWED_ORIGIN: "*"
